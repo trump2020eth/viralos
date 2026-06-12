@@ -18,8 +18,8 @@ import {
   interpolate,
   Easing,
 } from 'remotion'
-import { getKenBurnsFrame, parseCameraMovement } from './kenburns'
-import { buildCaptionSegments, CaptionOverlay, type CaptionStyle } from './captions'
+import { getKenBurnsFrame, parseCameraMovement } from '../kenburns'
+import { buildCaptionSegments, CaptionOverlay, type CaptionStyle } from '../captions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
