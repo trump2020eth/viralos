@@ -34,10 +34,11 @@ export interface SceneAsset {
   captionStyle: CaptionStyle
 }
 
-export interface ViralOSCompositionProps {
+export type ViralOSCompositionProps = {
   scenes: SceneAsset[]
   format: '9:16' | '16:9' | '1:1'
   title: string
+} & Record<string, unknown>
 }
 
 // ─── Scene Component ──────────────────────────────────────────────────────────
