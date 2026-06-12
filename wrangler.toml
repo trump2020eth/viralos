@@ -1,0 +1,33 @@
+name = "viralos"
+compatibility_date = "2024-09-23"
+
+# Cloudflare Pages build output directory for Next.js
+# When deploying via Cloudflare Pages dashboard, set:
+#   Build command:    npx @cloudflare/next-on-pages
+#   Build output dir: .vercel/output/static
+pages_build_output_dir = ".vercel/output/static"
+
+[vars]
+NODE_VERSION = "20"
+
+# ─── Cloudflare Queue (async render dispatch) ──────────────────────────────────
+# Step 5: Uncomment and fill in when deploying the render worker.
+# Run: wrangler queues create viralos-render
+#
+# [[queues.producers]]
+# queue    = "viralos-render"
+# binding  = "RENDER_QUEUE"
+#
+# [[queues.consumers]]
+# queue             = "viralos-render"
+# max_batch_size    = 1        # one render at a time per Worker invocation
+# max_retries       = 2        # retry failed renders twice before DLQ
+# dead_letter_queue = "viralos-render-dlq"
+
+# ─── Render Worker (separate Worker — not Pages) ────────────────────────────────
+# Deploy the render worker separately:
+#   wrangler deploy --config worker/wrangler.worker.toml
+#
+# IMPORTANT: Remotion requires a Node.js runtime and CANNOT run inside a
+# Cloudflare Worker. The Worker delegates render work to /api/render/run
+# (the Next.js app) via HTTP. See worker/render-worker.ts.

@@ -1,0 +1,20 @@
+name             = "viralos-render-worker"
+compatibility_date = "2024-01-01"
+main             = "render-worker.ts"
+
+# Bind to the viralos-render queue as a consumer
+[[queues.consumers]]
+queue             = "viralos-render"
+max_batch_size    = 1          # one render at a time — renders are heavy
+max_retries       = 2          # retry twice on transient failures
+dead_letter_queue = "viralos-render-dlq"
+
+# Environment variables — set secrets via `wrangler secret put`
+# wrangler secret put RENDER_WORKER_SECRET
+# wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+
+[vars]
+# URL of your deployed Next.js app — change for production
+NEXT_APP_URL          = "https://your-viralos.pages.dev"
+RENDER_QUEUE_NAME     = "viralos-render"
+SUPABASE_URL          = ""    # set via wrangler secret or dashboard

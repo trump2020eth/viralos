@@ -1,0 +1,35 @@
+{
+  "name": "viralos",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "remotion:studio": "remotion studio remotion/Root.tsx",
+    "health": "curl -s http://localhost:3000/api/health | jq ."
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "@clerk/nextjs": "^6.0.0",
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
+    "typescript": "^5.0.0"
+  }
+}

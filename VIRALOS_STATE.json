@@ -1,0 +1,109 @@
+{
+  "project_name": "ViralOS AI Content Engine",
+  "version": "v24-image-engine-upgrade",
+  "goal": "Production-grade AI video creation platform \u2014 direct InVideo.io competitor",
+  "strategic_direction": {
+    "summary": "Full-stack scale-ready architecture. Phase 1 personal use (free stack). Phase 2 monetization when quality matches InVideo. Zero-rewrite upgrade path.",
+    "monetization_plan": "Self-use first. Stripe subscription tiers in Phase 2.",
+    "philosophy": "Free to start, scale by swapping one function at a time. No rewrites."
+  },
+  "target_stack": {
+    "frontend": "Next.js 15 (App Router) \u2014 deployed on Cloudflare Pages",
+    "auth": "Clerk \u2014 free tier, Google + email, user management dashboard",
+    "database": "Supabase \u2014 free tier Postgres, stores users, projects, video library, render jobs \u2014 LIVE Step 4",
+    "storage": "Cloudflare R2 \u2014 free 10GB, stores rendered MP4s and generated images \u2014 LIVE Step 4",
+    "ai_script": "Groq \u2014 free, llama-3.3-70b-versatile, LIVE \u2014 key server-side only",
+    "ai_tts": "3-tier voice \u2014 LIVE Step 7. Tier 1: Piper TTS (free, self-hosted). Tier 2: ElevenLabs + PlayHT fallback. Tier 3: BYOK key in UI per-render.",
+    "ai_images": "4-engine image system \u2014 LIVE. Pollinations (free, default) \u2192 FLUX Schnell (Replicate, ~$0.003/img) \u2192 FLUX Dev (Replicate, ~$0.025/img) \u2192 Ideogram v2 (free tier). All gracefully fall back to Pollinations if key not set. User selects engine per-render in new-project UI.",
+    "video_render": "Remotion \u2014 server-side React+ffmpeg renderer, LIVE \u2014 real MP4s via /api/render/run. Ken Burns + captions + audio.",
+    "render_queue": "Cloudflare Queues \u2192 Cloudflare Worker \u2014 LIVE Step 5. Async job dispatch. Falls back to sync if not configured.",
+    "templates": "8 templates \u2014 LIVE Step 8. Each template controls the full generation pipeline.",
+    "payments_future": "Stripe \u2014 integrated in Phase 2"
+  },
+  "upgrade_path": {
+    "Piper TTS \u2192 ElevenLabs": "set ELEVENLABS_API_KEY \u2014 zero code changes",
+    "ElevenLabs \u2192 PlayHT": "set PLAYHT_API_KEY + PLAYHT_USER_ID \u2014 auto-fallback already wired",
+    "Any TTS \u2192 user BYOK": "user enters key in new-project UI \u2014 already live",
+    "Pollinations \u2192 FLUX API or Replicate": "swap lib/services/image.ts \u2014 one function",
+    "Remotion OSS \u2192 Remotion Lambda": "swap lib/services/video.ts renderFinalVideoRemotion() \u2014 zero architecture change",
+    "R2 \u2192 S3 or Supabase Storage": "swap lib/services/storage.ts uploadVideo() \u2014 one function",
+    "Supabase free \u2192 Supabase Pro": "billing upgrade only, $25/mo",
+    "Cloudflare free \u2192 Cloudflare paid": "billing upgrade only",
+    "Add new template": "add entry to lib/templates.ts TEMPLATES array \u2014 zero other changes"
+  },
+  "build_phases": {
+    "phase_1_personal": [
+      "[x] Step 1: Next.js app shell + Clerk auth \u2014 COMPLETE",
+      "[x] Step 2: Groq script generation (port from current app.js) \u2014 COMPLETE",
+      "[x] Step 3: Remotion video renderer (real server-side MP4s) \u2014 COMPLETE",
+      "[x] Step 4: Supabase schema + R2 storage + project library \u2014 COMPLETE",
+      "[x] Step 5: Cloudflare Queue for async render dispatch \u2014 COMPLETE",
+      "[ ] Step 6: Stripe subscription tiers \u2014 DEFERRED (no paying users yet, zero cost build)",
+      "[x] Step 7: 3-tier voice architecture (Piper + ElevenLabs + PlayHT + BYOK) \u2014 COMPLETE",
+      "[x] Step 8: Custom templates + brand kits \u2014 COMPLETE"
+    ],
+    "phase_2_monetization": [
+      "[ ] Step 6: Stripe subscription tiers",
+      "[ ] Step 9: Bulk generation dashboard",
+      "[ ] Step 10: Direct platform publishing"
+    ]
+  },
+  "step_8_deliverables": {
+    "files_modified": [
+      "lib/templates.ts \u2014 NEW. ViralTemplate interface. 8 templates: TikTok Story, Documentary, True Crime, History Channel, AI News, Reddit Story, Motivation, Business Explainer, Faceless YouTube. Each template defines: tone, systemPersona, beats[], beatNotes{}, visualStyle, cameraVocabulary, pacingNote, lightingNote, defaultFormat, defaultDuration, defaultVoice, captionStyle, sceneCountOverride. Helper functions: getTemplate(), getDefaultTemplate(), getTemplatesByCategory(), buildSystemPersona(), buildBeatInstructions().",
+      "app/api/generate/route.ts \u2014 Updated. GenerateRequest now accepts optional templateId. buildPrompt() is fully template-aware: injects systemPersona, template.tone, template.visualStyle, template.cameraVocabulary, template.lightingNote, and per-beat director notes from buildBeatInstructions(). Dynamic story_arc JSON schema keys generated from template.beats. sceneCount() respects template.sceneCountOverride. Groq system message uses buildSystemPersona(template). Backwards-compatible \u2014 falls back to TikTok Story template when templateId is absent. templateId echoed back in GenerateResponse.",
+      "app/(app)/new-project/page.tsx \u2014 Updated. Template selector card added as first card (above Niche). 8 template buttons with emoji, label, description. Selecting a template auto-fills format, duration, voice, captionStyle, tone. Template details strip shows format/duration/beats/caption/tone preview. Preview summary shows Template + Topic instead of Niche + Tone. handleGenerate() forwards templateId to /api/generate."
+    ],
+    "template_catalog": {
+      "tiktok-story": "3 scenes, 9:16, 30s, punchy, TikTok native, snap-zoom camera",
+      "documentary": "7 beats (cold_open\u2192legacy), 16:9, 90s, cinematic, wide establishing shots",
+      "true-crime": "7 beats (cold_open\u2192aftermath), 16:9, 90s, dark/moody, tension-creep camera",
+      "history-channel": "7 beats, 16:9, 90s, epic painterly style, chiaroscuro lighting",
+      "ai-news": "6 beats, 9:16, 60s, futuristic aesthetic, 6-scene override",
+      "reddit-story": "7 beats, 9:16, 60s, relatable drama, modern interiors",
+      "motivation": "7 beats, 9:16, 60s, high-energy aspirational, golden hour lighting",
+      "business-explainer": "7 beats, 16:9, 90s, professional, clean studio lighting",
+      "faceless-youtube": "documentary beats, 16:9, 90s, cinematic B-roll, research-heavy narration"
+    },
+    "architecture": {
+      "template_controls": "Every template controls: script tone, system persona, beat sequence, per-beat director notes, visual style, camera vocabulary, pacing, lighting, format, duration, voice, captions.",
+      "backwards_compat": "templateId is optional in GenerateRequest. Falls back to tiktok-story. All existing API callers unaffected.",
+      "extensibility": "New templates added by appending to TEMPLATES array in lib/templates.ts. Zero other changes required."
+    }
+  },
+  "current_status": "Image engine upgrade complete. 4 providers selectable per-render: Pollinations (free default), FLUX Schnell, FLUX Dev, Ideogram v2. All fall back gracefully. REPLICATE_API_TOKEN + IDEOGRAM_API_KEY documented in .env.local.example. Next: Step 9 (Bulk generation) or set REPLICATE_API_TOKEN and validate quality.",
+  "legacy_systems_status": {
+    "callAPI_groq_script": "PORTED \u2014 /api/generate route, server-side, key never exposed",
+    "story_arc_7_beat_schema": "PORTED \u2014 full schema in Groq prompt, returned in JSON response. Templates extend with custom beat sequences.",
+    "character_memory_schema": "PORTED \u2014 characters array with locked visual_identity. Stored in projects.characters_json (Step 4).",
+    "buildTimeline_getCameraMove_parseCameraMovement": "PORTED \u2014 remotion/kenburns.ts, getKenBurnsFrame() + parseCameraMovement(). Templates inject vocabulary into prompts.",
+    "renderCharacters_character_memory": "COMPLETE \u2014 character visual_identity in image_prompts + persisted in Supabase",
+    "caption_engine": "PORTED \u2014 remotion/captions.tsx, TikTok v2 + Reels Bold, word-timed segments. Template-controlled via captionStyle.",
+    "platform_publishing": "TO REBUILD in Step 10 \u2192 server-side token storage in Supabase"
+  },
+  "next_priorities": [
+    "IMMEDIATE \u2014 Set REPLICATE_API_TOKEN in .env.local, select FLUX Schnell, render test videos across templates. Validate quality jump.",
+    "Step 9: Bulk generation dashboard \u2014 generate 5-10 videos from one topic + template",
+    "Step 6: Stripe \u2014 when first paying user arrives"
+  ],
+  "last_run": "Image engine upgrade \u2014 lib/services/image.ts rewritten with 4 providers (Pollinations, FLUX Schnell/Dev via Replicate, Ideogram v2). All graceful fallback to Pollinations if key missing. render/run/route.ts now calls generateImage() from service layer \u2014 buildPollinationsUrl() removed. new-project page image engine select upgraded to 4 options with quality/cost labels and signup links. .env.local.example updated with REPLICATE_API_TOKEN + IDEOGRAM_API_KEY.",
+  "image_upgrade_plan": {
+    "files_to_change": [
+      "lib/services/image.ts \u2014 add generateImageFluxReplicate() + generateImageIdeogram(). generateImage() routes by imageEngine param.",
+      "app/api/render/run/route.ts \u2014 replace buildPollinationsUrl() inline call with generateImage() from service layer. Pass imageEngine from body.",
+      "app/(app)/new-project/page.tsx \u2014 upgrade image engine select: 4 options with quality tier + cost label + free badge.",
+      ".env.local.example \u2014 document REPLICATE_API_TOKEN and IDEOGRAM_API_KEY with signup links and free tier notes."
+    ],
+    "providers": {
+      "pollinations": "Free, no key. Current default. Lower quality. Zero setup.",
+      "flux-schnell-replicate": "Replicate FLUX Schnell. ~$0.003/image. $5 free credit on signup. Fastest FLUX. Best free starting point.",
+      "flux-dev-replicate": "Replicate FLUX Dev. ~$0.025/image. Higher quality than Schnell. Use for hero/showcase renders.",
+      "ideogram": "Ideogram v2. Free tier with monthly credits. Strong on stylized/cinematic. Good for documentary + history templates."
+    },
+    "env_vars_needed": [
+      "REPLICATE_API_TOKEN",
+      "IDEOGRAM_API_KEY"
+    ],
+    "cost_to_start": "$0 \u2014 Replicate $5 free credit + Ideogram free tier covers hundreds of test renders"
+  }
+}
