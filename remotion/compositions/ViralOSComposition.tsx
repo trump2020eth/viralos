@@ -40,7 +40,6 @@ export type ViralOSCompositionProps = {
   title: string
 } & Record<string, unknown>
 
-
 // ─── Scene Component ──────────────────────────────────────────────────────────
 
 function SceneRenderer({

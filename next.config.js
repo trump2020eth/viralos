@@ -9,21 +9,17 @@ const nextConfig = {
       { protocol: 'https', hostname: 'ideogram.ai' },
     ],
   },
-  // Silence ESLint during builds — run lint separately in CI
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // TypeScript errors as warnings in dev, errors in CI
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Required for Remotion server-side rendering (uses Node.js APIs)
-  experimental: {
-    serverComponentsExternalPackages: [
-      '@remotion/renderer',
-      '@remotion/bundler',
-    ],
-  },
+  // Next.js 15 — moved out of experimental
+  serverExternalPackages: [
+    '@remotion/renderer',
+    '@remotion/bundler',
+  ],
 }
 
 module.exports = nextConfig

@@ -45,10 +45,10 @@ export function RemotionRoot() {
         width={w9_16}
         height={h9_16}
         defaultProps={{ ...defaultProps, format: '9:16' }}
-        calculateMetadata={({ props }) => ({
-          durationInFrames:
-            props.scenes.reduce((sum, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60,
-        })}
+        calculateMetadata={({ props }) => {
+          const p = props as ViralOSCompositionProps
+          return { durationInFrames: p.scenes.reduce((sum: number, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60 }
+        }}
       />
       <Composition
         id="ViralOS-16-9"
@@ -58,10 +58,10 @@ export function RemotionRoot() {
         width={w16_9}
         height={h16_9}
         defaultProps={{ ...defaultProps, format: '16:9' }}
-        calculateMetadata={({ props }) => ({
-          durationInFrames:
-            props.scenes.reduce((sum, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60,
-        })}
+        calculateMetadata={({ props }) => {
+          const p = props as ViralOSCompositionProps
+          return { durationInFrames: p.scenes.reduce((sum: number, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60 }
+        }}
       />
       <Composition
         id="ViralOS-1-1"
@@ -71,10 +71,10 @@ export function RemotionRoot() {
         width={w1_1}
         height={h1_1}
         defaultProps={{ ...defaultProps, format: '1:1' }}
-        calculateMetadata={({ props }) => ({
-          durationInFrames:
-            props.scenes.reduce((sum, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60,
-        })}
+        calculateMetadata={({ props }) => {
+          const p = props as ViralOSCompositionProps
+          return { durationInFrames: p.scenes.reduce((sum: number, s) => sum + Math.round(s.audioDurationSeconds * FPS), 0) || FPS * 60 }
+        }}
       />
     </>
   )
