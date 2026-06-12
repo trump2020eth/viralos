@@ -532,7 +532,7 @@ export default function NewProjectPage() {
               {[
                 { label: 'Script',  status: 'done',                                                          note: 'Groq · llama-3.3-70b' },
                 { label: 'Queue',   status: rendering && renderAsync ? 'active' : videoUrl ? 'done' : rendering ? 'active' : 'ready', note: renderAsync ? 'CF Queue' : 'Sync' },
-                { label: 'Voice',   status: rendering ? 'active' : videoUrl ? 'done' : 'ready',              note: 'Kokoro TTS' },
+                { label: 'Voice',   status: rendering ? 'active' : videoUrl ? 'done' : 'ready',              note: voice.startsWith('el-') ? 'ElevenLabs' : voice.startsWith('playht-') ? 'PlayHT' : 'Piper TTS' },
                 { label: 'Images',  status: rendering ? 'active' : videoUrl ? 'done' : 'ready',              note: imageEngine === 'flux-schnell' ? 'FLUX Schnell' : imageEngine === 'flux-dev' ? 'FLUX Dev' : imageEngine === 'ideogram' ? 'Ideogram v2' : 'Pollinations' },
                 { label: 'Render',  status: rendering ? 'active' : videoUrl ? 'done' : 'ready',              note: 'Remotion OSS' },
               ].map((item) => (
@@ -937,7 +937,7 @@ export default function NewProjectPage() {
             <div style={{ fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '12px' }}>Active stack</div>
             {[
               ['Script', 'Groq · llama-3.3-70b', true],
-              ['Voice', 'Kokoro TTS', false],
+              ['Voice', voice.startsWith('el-') ? 'ElevenLabs' : voice.startsWith('playht-') ? 'PlayHT' : 'Piper TTS', false],
               ['Images', 'Pollinations', false],
               ['Render', 'Remotion OSS', false],
             ].map(([k, v, active]) => (

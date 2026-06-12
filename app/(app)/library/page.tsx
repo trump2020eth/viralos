@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
 interface RenderJob {
@@ -9,6 +9,7 @@ interface RenderJob {
   status: string
   duration_seconds: number | null
   r2_url: string | null
+  r2_key: string | null
   completed_at: string | null
 }
 
@@ -29,18 +30,34 @@ interface Project {
 const FILTERS = ['All', 'Done', 'Rendering', 'Draft', 'Error']
 const SORTS   = ['Newest', 'Oldest']
 
+// R2 URLs expire after 7 days. Refresh if completed_at is older than 6 days.
+const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000
+
+async function refreshExpiredUrl(r2Key: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/videos/refresh-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ r2Key }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.url || null
+  } catch {
+    return null
+  }
+}
+
 export default function LibraryPage() {
   const [projects, setProjects]   = useState<Project[]>([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [filter, setFilter]       = useState('All')
   const [sort, setSort]           = useState('Newest')
+  // Track refreshed URLs: { [r2Key]: freshUrl }
+  const [refreshedUrls, setRefreshedUrls] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    fetchProjects()
-  }, [])
-
-  async function fetchProjects() {
+  const fetchProjects = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -50,13 +67,34 @@ export default function LibraryPage() {
         throw new Error(d.error || `API error ${res.status}`)
       }
       const data = await res.json()
-      setProjects(data.projects || [])
+      const fetched: Project[] = data.projects || []
+      setProjects(fetched)
+
+      // Check for expired R2 URLs and refresh them silently
+      for (const project of fetched) {
+        const latestRender = getLatestRender(project)
+        if (!latestRender?.r2_key || !latestRender?.r2_url || !latestRender.completed_at) continue
+
+        const age = Date.now() - new Date(latestRender.completed_at).getTime()
+        if (age > SIX_DAYS_MS) {
+          // URL may be expired — refresh in background
+          refreshExpiredUrl(latestRender.r2_key).then(freshUrl => {
+            if (freshUrl) {
+              setRefreshedUrls(prev => ({ ...prev, [latestRender.r2_key!]: freshUrl }))
+            }
+          })
+        }
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to load library')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchProjects()
+  }, [fetchProjects])
 
   const filtered = projects
     .filter(p => filter === 'All' || p.status === filter.toLowerCase())
@@ -70,6 +108,14 @@ export default function LibraryPage() {
     return project.render_jobs.sort(
       (a, b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime()
     )[0]
+  }
+
+  function getVideoUrl(render: RenderJob): string | null {
+    // Use refreshed URL if available, otherwise fall back to stored URL
+    if (render.r2_key && refreshedUrls[render.r2_key]) {
+      return refreshedUrls[render.r2_key]
+    }
+    return render.r2_url
   }
 
   function formatDate(iso: string) {
@@ -173,7 +219,8 @@ export default function LibraryPage() {
         <div className="grid-auto">
           {filtered.map((project) => {
             const latestRender = getLatestRender(project)
-            const hasVideo = project.status === 'done' && latestRender?.r2_url
+            const videoUrl = latestRender ? getVideoUrl(latestRender) : null
+            const hasVideo = project.status === 'done' && !!videoUrl
             const isRendering = project.status === 'rendering'
 
             return (
@@ -182,7 +229,7 @@ export default function LibraryPage() {
                 <div className={`video-thumbnail ${project.format === '16:9' ? 'video-thumbnail-16-9' : ''}`}>
                   {hasVideo ? (
                     <video
-                      src={latestRender!.r2_url!}
+                      src={videoUrl!}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       muted
                       playsInline
@@ -201,7 +248,7 @@ export default function LibraryPage() {
                   {/* Download button overlay */}
                   {hasVideo && (
                     <a
-                      href={latestRender!.r2_url!}
+                      href={videoUrl!}
                       download={`${project.title}.mp4`}
                       style={{
                         position: 'absolute',

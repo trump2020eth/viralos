@@ -39,6 +39,20 @@ export async function GET(): Promise<NextResponse> {
 
   const has = (key: string) => Boolean(process.env[key])
 
+  // Detect which TTS provider is actually configured
+  const hasElevenLabs = has('ELEVENLABS_API_KEY')
+  const hasPlayHT = has('PLAYHT_API_KEY') && has('PLAYHT_USER_ID')
+  const hasPiper = has('PIPER_API_URL') || has('KOKORO_API_URL')
+  const hasTTS = hasElevenLabs || hasPlayHT || hasPiper
+
+  const ttsNote = hasElevenLabs
+    ? 'ElevenLabs configured'
+    : hasPlayHT
+      ? 'PlayHT configured'
+      : hasPiper
+        ? 'Piper/Kokoro TTS configured'
+        : '⚠️ No TTS provider — renders will use SILENT AUDIO. Add ELEVENLABS_API_KEY.'
+
   const services: HealthResponse['services'] = {
     clerk: {
       configured: has('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY') && has('CLERK_SECRET_KEY'),
@@ -57,21 +71,20 @@ export async function GET(): Promise<NextResponse> {
     },
     r2: {
       configured: has('R2_ACCOUNT_ID') && has('R2_ACCESS_KEY_ID') && has('R2_SECRET_ACCESS_KEY'),
-      status: has('R2_ACCOUNT_ID') ? 'ok' : 'degraded',
+      status: has('R2_ACCOUNT_ID') && has('R2_ACCESS_KEY_ID') && has('R2_SECRET_ACCESS_KEY') ? 'ok' : 'degraded',
       note: !has('R2_ACCOUNT_ID') ? 'Videos returned as base64 (no persistent storage)' : undefined,
     },
     tts: {
-      configured: has('PIPER_API_URL') || has('KOKORO_API_URL') || has('ELEVENLABS_API_KEY') || has('PLAYHT_API_KEY'),
-      status: 'ok', // always ok — has silent fallback
-      note: (!has('PIPER_API_URL') && !has('KOKORO_API_URL') && !has('ELEVENLABS_API_KEY'))
-        ? 'No TTS provider configured — renders will use silent audio'
-        : undefined,
+      configured: hasTTS,
+      // degraded (not ok) when silent fallback is active — callers can alert on this
+      status: hasTTS ? 'ok' : 'degraded',
+      note: ttsNote,
     },
     images: {
       configured: true, // Pollinations is always available (no key needed)
       status: 'ok',
       note: has('REPLICATE_API_TOKEN')
-        ? 'FLUX engines available'
+        ? 'FLUX engines available (Replicate)'
         : has('IDEOGRAM_API_KEY')
           ? 'Ideogram engine available'
           : 'Using Pollinations (free, no key needed)',
@@ -79,7 +92,7 @@ export async function GET(): Promise<NextResponse> {
     queue: {
       configured: has('CF_ACCOUNT_ID') && has('CF_API_TOKEN'),
       status: has('CF_ACCOUNT_ID') && has('CF_API_TOKEN') ? 'ok' : 'degraded',
-      note: !has('CF_ACCOUNT_ID') ? 'Async queue not configured — renders run synchronously' : undefined,
+      note: !has('CF_ACCOUNT_ID') ? 'Async queue not configured — renders run synchronously (fine for short videos)' : undefined,
     },
   }
 
