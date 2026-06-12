@@ -29,18 +29,6 @@ interface RenderRequest {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  try {
-    return await handlePost(req)
-  } catch (e: any) {
-    console.error('[render] Unhandled error:', e)
-    return NextResponse.json(
-      { jobId: 'unknown', status: 'error', error: e?.message || 'Unexpected server error' },
-      { status: 500 }
-    )
-  }
-}
-
-async function handlePost(req: NextRequest): Promise<NextResponse> {
   // ── Auth guard ────────────────────────────────────────────────────────────
   const { userId } = await auth()
   if (!userId) {
@@ -101,16 +89,6 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
     )
   }
 
-  let runData: any = {}
-  try {
-    const rawText = await runRes.text()
-    runData = rawText ? JSON.parse(rawText) : {}
-  } catch {
-    runData = {
-      jobId,
-      status: 'error',
-      error: `Render returned an invalid response (HTTP ${runRes.status}). It may have exceeded the platform's execution time limit.`,
-    }
-  }
-  return NextResponse.json(runData, { status: runRes.ok ? 200 : (runRes.status || 500) })
+  const runData = await runRes.json()
+  return NextResponse.json(runData, { status: runRes.status })
 }

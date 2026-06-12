@@ -5,31 +5,6 @@ import type { GenerateResponse, SceneDirector } from '@/app/api/generate/route'
 import { VOICE_CATALOG, getVoicesByTier } from '@/lib/services/voice'
 import { TEMPLATES, getTemplate, type ViralTemplate } from '@/lib/templates'
 
-/**
- * safeJson()
- * Parses a fetch Response body as JSON without throwing.
- * Servers can return empty bodies or HTML error pages (e.g. on a function
- * timeout or crash), which makes `res.json()` throw
- * "Unexpected end of JSON input". This reads the raw text first and falls
- * back to a structured error object so callers always get a usable shape.
- */
-async function safeJson(res: Response): Promise<any> {
-  let text = ''
-  try {
-    text = await res.text()
-  } catch {
-    return { error: `Request failed (HTTP ${res.status})` }
-  }
-  if (!text) {
-    return { error: `Empty response from server (HTTP ${res.status})` }
-  }
-  try {
-    return JSON.parse(text)
-  } catch {
-    return { error: `Server returned an invalid response (HTTP ${res.status})` }
-  }
-}
-
 const NICHES = [
   { value: 'money-psychology', label: '💰 Money Psychology' },
   { value: 'productivity', label: '⚡ Productivity' },
@@ -135,7 +110,7 @@ export default function NewProjectPage() {
         }),
       })
 
-      const data = await safeJson(res)
+      const data = await res.json()
 
       if (!res.ok) {
         throw new Error(data.error || `API error ${res.status}`)
@@ -159,7 +134,7 @@ export default function NewProjectPage() {
           imageEngine,
         }),
       })
-        .then(r => safeJson(r))
+        .then(r => r.json())
         .then(d => {
           if (d?.project?.id) setProjectId(d.project.id)
         })
@@ -218,7 +193,7 @@ export default function NewProjectPage() {
         }),
       })
 
-      const data = await safeJson(res)
+      const data = await res.json()
 
       if (!res.ok) {
         // Queue route failed entirely — try legacy /api/render as last resort
@@ -271,11 +246,7 @@ export default function NewProjectPage() {
 
       try {
         const statusRes = await fetch(`/api/render/status/${jobId}`)
-        const statusData = await safeJson(statusRes)
-
-        if (!statusRes.ok) {
-          throw new Error(statusData.error || `Status check failed (HTTP ${statusRes.status})`)
-        }
+        const statusData = await statusRes.json()
 
         const elapsed = statusData.elapsedSeconds || (i + 1) * 3
         const elapsedLabel = elapsed < 60
@@ -341,7 +312,7 @@ export default function NewProjectPage() {
     })
 
     setRenderProgress('Compositing video…')
-    const data = await safeJson(res)
+    const data = await res.json()
 
     if (!res.ok || data.status === 'error') {
       throw new Error(data.error || `Render failed: ${res.status}`)

@@ -52,21 +52,6 @@ export interface QueueRenderResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  try {
-    return await handlePost(req)
-  } catch (e: any) {
-    console.error('[queue] Unhandled error:', e)
-    return NextResponse.json({
-      jobId: `render_error_${Date.now()}`,
-      status: 'error',
-      message: e?.message || 'Unexpected server error',
-      async: false,
-      error: e?.message || 'Unexpected server error',
-    }, { status: 500 })
-  }
-}
-
-async function handlePost(req: NextRequest): Promise<NextResponse> {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -150,63 +135,37 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
   // ── Fallback: synchronous render (Step 3/4 behaviour preserved) ──────────────
   console.log('[queue] CF Queue not configured — running render synchronously')
 
-  let runRes: Response
-  try {
-    runRes = await fetch(new URL('/api/render/run', req.url).toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-render-worker-secret': process.env.RENDER_WORKER_SECRET || '',
-        cookie: req.headers.get('cookie') ?? '',
-      },
-      body: JSON.stringify({
-        jobId,
-        projectId:   projectId || null,
-        userId,
-        script,
-        captionStyle,
-        voice,
-        imageEngine,
-        format,
-        ...(byokApiKey && byokProvider ? { byokProvider, byokApiKey, byokUserId } : {}),
-      }),
-    })
-  } catch (e: any) {
-    // Network-level failure calling /api/render/run (e.g. function crashed)
-    return NextResponse.json({
+  const runRes = await fetch(new URL('/api/render/run', req.url).toString(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-render-worker-secret': process.env.RENDER_WORKER_SECRET || '',
+      cookie: req.headers.get('cookie') ?? '',
+    },
+    body: JSON.stringify({
       jobId,
-      status: 'error',
-      message: `Render request failed: ${e?.message || 'network error'}`,
-      async: false,
-      error: e?.message || 'Render request failed',
-    }, { status: 502 })
-  }
+      projectId:   projectId || null,
+      userId,
+      script,
+      captionStyle,
+      voice,
+      imageEngine,
+      format,
+      ...(byokApiKey && byokProvider ? { byokProvider, byokApiKey, byokUserId } : {}),
+    }),
+  })
 
-  // /api/render/run may return a non-JSON body (empty, HTML error page, or
-  // truncated response from a Vercel function timeout). Parse defensively
-  // so this route always returns valid JSON to the client.
-  let runData: any = {}
-  try {
-    const rawText = await runRes.text()
-    runData = rawText ? JSON.parse(rawText) : {}
-  } catch {
-    runData = {
-      error: runRes.status === 504 || !runRes.ok
-        ? `Render timed out or failed (HTTP ${runRes.status}). The render may exceed the platform's execution time limit — consider deploying the render worker separately.`
-        : 'Render returned an invalid response.',
-    }
-  }
+  const runData = await runRes.json()
 
   const response: QueueRenderResponse = {
     jobId,
     status:  runRes.ok && runData.status !== 'error' ? 'running_sync' : 'error',
-    message: runRes.ok ? `Sync render complete — job ${jobId}` : (runData.error || `Render failed (HTTP ${runRes.status})`),
+    message: runRes.ok ? `Sync render complete — job ${jobId}` : (runData.error || 'Render failed'),
     async:   false,
   }
 
   return NextResponse.json({
     ...response,
-    error:           runData.error,
     // Forward the full render result when running synchronously
     outputUrl:       runData.outputUrl,
     r2Key:           runData.r2Key,

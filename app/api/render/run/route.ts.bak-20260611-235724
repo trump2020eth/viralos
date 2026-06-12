@@ -55,18 +55,6 @@ interface RenderRunResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  try {
-    return await handlePost(req)
-  } catch (e: any) {
-    console.error('[run] Unhandled error:', e)
-    return NextResponse.json(
-      { jobId: 'unknown', status: 'error', error: e?.message || 'Unexpected server error' },
-      { status: 500 }
-    )
-  }
-}
-
-async function handlePost(req: NextRequest): Promise<NextResponse> {
   // ── Auth: shared secret ────────────────────────────────────────────────────
   const expectedSecret = process.env.RENDER_WORKER_SECRET
   if (expectedSecret) {
