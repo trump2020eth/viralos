@@ -71,7 +71,13 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
   // /api/render/run is the single source of truth for the render pipeline.
   // It handles: image generation (via lib/services/image.ts), TTS, Remotion,
   // R2 upload, and Supabase persistence — all with correct fallback chains.
-  const appUrl = process.env.NEXT_APP_URL || `http://localhost:${process.env.PORT || 3000}`
+  // appUrl resolution order: explicit NEXT_APP_URL -> Vercel's auto-injected
+  // deployment URL -> localhost (dev only). Falling through to localhost in
+  // production means this fetch can never succeed, so VERCEL_URL is a much
+  // safer default than the previous code had.
+  const appUrl =
+    process.env.NEXT_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${process.env.PORT || 3000}`)
 
   let runRes: Response
   try {
@@ -96,20 +102,24 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     console.error('[render] Failed to reach /api/render/run:', err)
     return NextResponse.json(
-      { jobId, status: 'error', error: 'Internal render service unreachable. Check NEXT_APP_URL.' },
+      { jobId, status: 'error', error: `Internal render service unreachable at ${appUrl}/api/render/run. Check NEXT_APP_URL.` },
       { status: 502 }
     )
   }
 
+  const rawText = await runRes.text()
   let runData: any = {}
   try {
-    const rawText = await runRes.text()
     runData = rawText ? JSON.parse(rawText) : {}
   } catch {
+    const snippet = rawText.replace(/\s+/g, ' ').trim().slice(0, 300)
     runData = {
       jobId,
       status: 'error',
-      error: `Render returned an invalid response (HTTP ${runRes.status}). It may have exceeded the platform's execution time limit.`,
+      error:
+        `Render returned an invalid response (HTTP ${runRes.status}) from ${appUrl}/api/render/run. ` +
+        `It may have exceeded the platform's execution time limit, or middleware/auth is intercepting ` +
+        `the internal request. Response body: ${snippet || '(empty)'}`,
     }
   }
   return NextResponse.json(runData, { status: runRes.ok ? 200 : (runRes.status || 500) })
