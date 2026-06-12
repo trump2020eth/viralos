@@ -28,6 +28,7 @@ import type { CaptionStyle } from '@/remotion/captions'
 import type { SceneAsset } from '@/remotion/compositions/ViralOSComposition'
 import { uploadVideo } from '@/lib/services/storage'
 import { generateImage, type ImageEngine } from '@/lib/services/image'
+import { generateVoice } from '@/lib/services/voice'
 
 interface RenderRunRequest {
   jobId:        string
