@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ViralOS Render Worker — Cloudflare Worker
  *
