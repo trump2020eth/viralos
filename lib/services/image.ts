@@ -48,7 +48,16 @@ export async function generateImage(
 }
 
 // ─── Pollinations ─────────────────────────────────────────────────────────────
-// Free, no key. Falls back gracefully if unreachable.
+// Free, no key. As of mid-2026 Pollinations gates some models (notably
+// `model=flux`) behind a paid tier and returns HTTP 402 Payment Required for
+// unauthenticated requests. Since this is the default engine and previously
+// had NO fallback, a 402 here used to throw and take down the entire render
+// (every scene's Promise.all rejects). Now:
+//   1. Try `model=flux` (best quality, may 402 without a token)
+//   2. Retry with no `model` param (Pollinations' free default model)
+//   3. If both fail, return a generated placeholder image (data URL) so the
+//      render still completes — the user gets a video with placeholder
+//      visuals instead of a hard failure.
 
 async function generateImagePollinations(
   params: ImageGenerationParams
@@ -58,12 +67,49 @@ async function generateImagePollinations(
     `${prompt} cinematic, photorealistic, 8k, dramatic lighting, film grain`
   )
   const seedParam = seed != null ? `&seed=${seed}` : ''
-  const url = `https://image.pollinations.ai/prompt/${encoded}?width=${width}&height=${height}&nologo=true&model=flux${seedParam}`
+  const token = process.env.POLLINATIONS_API_TOKEN ? `&token=${process.env.POLLINATIONS_API_TOKEN}` : ''
 
-  const check = await fetch(url, { method: 'HEAD' })
-  if (!check.ok) throw new Error(`Pollinations returned ${check.status}`)
+  // Attempt 1: flux model (best quality, may require a token/paid tier)
+  const fluxUrl = `https://image.pollinations.ai/prompt/${encoded}?width=${width}&height=${height}&nologo=true&model=flux${seedParam}${token}`
+  try {
+    const check = await fetch(fluxUrl, { method: 'HEAD' })
+    if (check.ok) return { url: fluxUrl, provider: 'pollinations' }
+    console.warn(`[image] Pollinations (flux) returned ${check.status} — trying default model`)
+  } catch (e) {
+    console.warn('[image] Pollinations (flux) request failed — trying default model:', e)
+  }
 
-  return { url, provider: 'pollinations' }
+  // Attempt 2: default model (no `model=` param) — Pollinations' free tier
+  const defaultUrl = `https://image.pollinations.ai/prompt/${encoded}?width=${width}&height=${height}&nologo=true${seedParam}${token}`
+  try {
+    const check = await fetch(defaultUrl, { method: 'HEAD' })
+    if (check.ok) return { url: defaultUrl, provider: 'pollinations' }
+    console.warn(`[image] Pollinations (default) returned ${check.status} — using placeholder`)
+  } catch (e) {
+    console.warn('[image] Pollinations (default) request failed — using placeholder:', e)
+  }
+
+  // Attempt 3: placeholder so the render still completes
+  return { url: generatePlaceholderImage(width, height, seed), provider: 'placeholder' }
+}
+
+// ─── Placeholder ──────────────────────────────────────────────────────────────
+// Last-resort image when every external provider fails. A simple gradient
+// SVG encoded as a data URL — Remotion's <Img> can render data URLs directly.
+
+function generatePlaceholderImage(width: number, height: number, seed?: number): string {
+  const hue = ((seed ?? 1) * 47) % 360
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="hsl(${hue},45%,22%)"/>
+      <stop offset="100%" stop-color="hsl(${(hue + 60) % 360},45%,10%)"/>
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="url(#g)"/>
+</svg>`
+  const base64 = Buffer.from(svg).toString('base64')
+  return `data:image/svg+xml;base64,${base64}`
 }
 
 // ─── Replicate (FLUX Schnell + FLUX Dev) ──────────────────────────────────────
