@@ -119,31 +119,31 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
     )
 
     // ── Step 2: TTS per scene ────────────────────────────────────────────────
-    const appUrl = process.env.NEXT_APP_URL || `http://localhost:${process.env.PORT || 3000}`
+    // Calls the voice service in-process (no internal HTTP hop). Previously
+    // this fetched `${appUrl}/api/tts`, which routes through Clerk's auth
+    // middleware — server-to-server calls have no session cookie, so Clerk
+    // returned a 404 here, which surfaced as "Render returned an invalid
+    // response (HTTP 404)" one level up in /api/render.
     const ttsResults = await Promise.all(
       script.scenes.map(async (scene) => {
-        const ttsRes = await fetch(`${appUrl}/api/tts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        try {
+          const ttsData = await generateVoice({
             text: scene.narration,
             voice,
             speed: 1.0,
             ...(byokApiKey && byokProvider ? { byokProvider, byokApiKey, byokUserId } : {}),
-          }),
-        })
-        if (!ttsRes.ok) {
-          throw new Error(`TTS failed for scene ${scene.scene_number}: ${ttsRes.status}`)
-        }
-        const ttsData = await ttsRes.json()
-        return {
-          sceneNumber:      scene.scene_number,
-          audioBase64:      ttsData.audioBase64 as string,
-          durationSeconds:  ttsData.durationSeconds as number,
+          })
+          return {
+            sceneNumber:      scene.scene_number,
+            audioBase64:      ttsData.audioBase64,
+            durationSeconds:  ttsData.durationSeconds,
+          }
+        } catch (e: any) {
+          throw new Error(`TTS failed for scene ${scene.scene_number}: ${e?.message || e}`)
         }
       })
     )
-
+    
     // ── Step 3: Build scene assets ───────────────────────────────────────────
     const sceneAssets: SceneAsset[] = script.scenes.map((scene) => {
       const img = imageResults.find((r) => r.sceneNumber === scene.scene_number)!
