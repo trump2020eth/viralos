@@ -39,7 +39,7 @@ export type ViralOSCompositionProps = {
   format: '9:16' | '16:9' | '1:1'
   title: string
 } & Record<string, unknown>
-}
+
 
 // ─── Scene Component ──────────────────────────────────────────────────────────
 
