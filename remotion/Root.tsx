@@ -4,7 +4,7 @@
  */
 
 import React from 'react'
-import { Composition } from 'remotion'
+import { Composition, registerRoot } from 'remotion'
 import {
   ViralOSComposition,
   getVideoDimensions,
@@ -79,3 +79,10 @@ export function RemotionRoot() {
     </>
   )
 }
+
+// /api/render/run passes this file directly to @remotion/bundler's bundle()
+// as the entryPoint. Remotion requires that entry point to call
+// registerRoot() — without it, bundle() throws:
+//   "this file does not contain registerRoot"
+// RemotionRoot was exported here but never registered. This call fixes that.
+registerRoot(RemotionRoot)
