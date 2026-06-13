@@ -20,6 +20,17 @@ const nextConfig = {
     '@remotion/renderer',
     '@remotion/bundler',
   ],
+  // /api/render/run calls @remotion/bundler's bundle() with a dynamic
+  // path.resolve(process.cwd(), 'remotion', 'Root.tsx') entry point. Next's
+  // file tracer (@vercel/nft) only follows static `import`/`require` calls,
+  // so it can't see that this route needs the rest of remotion/** (Root.tsx
+  // itself got pulled in incidentally, but compositions/, captions.tsx, and
+  // kenburns.ts did not — causing "Module not found" at render time on
+  // Vercel). This explicitly includes the whole remotion/ directory in that
+  // route's serverless function bundle.
+  outputFileTracingIncludes: {
+    '/api/render/run': ['./remotion/**/*'],
+  },
 }
 
 module.exports = nextConfig
