@@ -257,7 +257,12 @@ async function renderWithRemotion(
   )
 
   const entryPoint = path.resolve(process.cwd(), 'remotion', 'Root.tsx')
-  const bundled    = await bundle({ entryPoint, webpackOverride: (c) => c })
+  // enableCaching defaults to true, which makes @remotion/bundler write a
+  // persistent webpack cache to `node_modules/.remotion`. On Vercel,
+  // process.cwd() (`/var/task`) is read-only at runtime, so that mkdir
+  // fails with ENOENT. Each invocation is a fresh container anyway, so the
+  // cache provides no benefit here — disable it.
+  const bundled    = await bundle({ entryPoint, webpackOverride: (c) => c, enableCaching: false })
 
   const composition = await selectComposition({
     serveUrl:    bundled,
