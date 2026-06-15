@@ -158,7 +158,7 @@ const outputPath    = join(outDir, `${jobId}.mp4`)
 
 // Use --props file path (avoids shell escaping issues with large base64 blobs in --props='...')
 const cmd = [
-  'npx', 'remotion', 'render',
+  'node_modules/.bin/remotion', 'render',
   'remotion/Root.tsx',
   compositionId,
   outputPath,
