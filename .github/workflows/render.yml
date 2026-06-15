@@ -1,0 +1,184 @@
+# .github/workflows/render.yml
+#
+# ViralOS — GitHub Actions Video Render Pipeline
+#
+# Triggered via workflow_dispatch from /api/render/queue on Vercel.
+# Does NOT call back to Vercel at all — the full render runs here.
+#
+# Pipeline:
+#   1. Checkout repo + install deps
+#   2. Install Chrome + FFmpeg (free on ubuntu-latest runners)
+#   3. Fetch script payload from Supabase (stored by /api/render/queue)
+#   4. Run render-pipeline.mjs → images + TTS + Remotion + R2 upload
+#   5. Update Supabase: status = 'done' | 'error'
+#
+# Free tier:
+#   Private repo  → 2,000 min/month  (~250–650 renders depending on length)
+#   Public repo   → unlimited minutes (if your repo can be public)
+#
+# Required GitHub Secrets (repo → Settings → Secrets → Actions → New):
+#   NEXT_PUBLIC_SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   R2_ACCOUNT_ID
+#   R2_ACCESS_KEY_ID
+#   R2_SECRET_ACCESS_KEY
+#   R2_BUCKET_NAME
+#   ELEVENLABS_API_KEY        (optional)
+#   PLAYHT_API_KEY            (optional)
+#   PLAYHT_USER_ID            (optional)
+#   KOKORO_API_URL            (optional — if self-hosting)
+
+name: Render Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Render job ID"
+        required: true
+        type: string
+      project_id:
+        description: "Project ID (can be empty)"
+        required: false
+        type: string
+        default: ""
+      user_id:
+        description: "Clerk user ID"
+        required: true
+        type: string
+      format:
+        description: "Video format"
+        required: true
+        type: choice
+        options: ["9:16", "16:9", "1:1"]
+        default: "9:16"
+      caption_style:
+        description: "Caption style"
+        required: false
+        type: string
+        default: "tiktok-v2"
+      voice:
+        description: "Voice ID"
+        required: false
+        type: string
+        default: "kokoro-en-f"
+      image_engine:
+        description: "Image engine"
+        required: false
+        type: string
+        default: "pollinations"
+      # NOTE: The full script JSON is NOT passed as an input.
+      # workflow_dispatch inputs have a ~1KB limit and logs are public.
+      # Instead, /api/render/queue stores the script in Supabase under job_id,
+      # and render-pipeline.mjs fetches it from there. Safe + no size limit.
+
+# Prevent duplicate renders if the workflow is re-run for the same job
+concurrency:
+  group: render-${{ github.event.inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: "Render ${{ github.event.inputs.job_id }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js ─────────────────────────────────────────────────────────
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # ── 3. Chrome + FFmpeg ─────────────────────────────────────────────────
+      # Remotion needs Chrome to render frames; FFmpeg to encode the MP4.
+      # google-chrome-stable is pre-installed on ubuntu-latest, but we
+      # explicitly install to guarantee version and get all required libs.
+      - name: Install Chrome and FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            google-chrome-stable \
+            ffmpeg \
+            fonts-liberation \
+            libatk-bridge2.0-0 \
+            libdrm2 \
+            libgbm1 \
+            libgtk-3-0 \
+            libnss3 \
+            libxss1 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            xdg-utils
+          echo "✓ Chrome: $(google-chrome --version)"
+          echo "✓ FFmpeg: $(ffmpeg -version | head -1)"
+
+      # ── 4. npm install ─────────────────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline
+
+      # ── 5. Mark job → rendering ────────────────────────────────────────────
+      - name: Update Supabase → rendering
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          PROJECT_ID: ${{ github.event.inputs.project_id }}
+        run: node scripts/update-job-status.mjs rendering
+
+      # ── 6. Run the full render pipeline ────────────────────────────────────
+      - name: Render video
+        env:
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          PROJECT_ID: ${{ github.event.inputs.project_id }}
+          USER_ID: ${{ github.event.inputs.user_id }}
+          FORMAT: ${{ github.event.inputs.format }}
+          CAPTION_STYLE: ${{ github.event.inputs.caption_style }}
+          VOICE: ${{ github.event.inputs.voice }}
+          IMAGE_ENGINE: ${{ github.event.inputs.image_engine }}
+          # Supabase
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # R2
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          # TTS (optional — graceful fallback to silence if not set)
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          PLAYHT_API_KEY: ${{ secrets.PLAYHT_API_KEY }}
+          PLAYHT_USER_ID: ${{ secrets.PLAYHT_USER_ID }}
+          KOKORO_API_URL: ${{ secrets.KOKORO_API_URL }}
+          PIPER_API_URL: ${{ secrets.PIPER_API_URL }}
+          # Tell Remotion exactly where Chrome is
+          CHROME_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+        run: node scripts/render-pipeline.mjs
+
+      # ── 7. Save MP4 as artifact (fallback — survives 1 day) ───────────────
+      # Even if R2 upload fails, you can grab the MP4 from the Actions UI.
+      - name: Save MP4 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ github.event.inputs.job_id }}
+          path: /tmp/viralos-render/*.mp4
+          retention-days: 1
+          if-no-files-found: ignore
+
+      # ── 8. On failure: mark job → error in Supabase ────────────────────────
+      - name: Update Supabase → error
+        if: failure()
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          PROJECT_ID: ${{ github.event.inputs.project_id }}
+          ERROR_MESSAGE: "Render failed — check GitHub Actions logs for job ${{ github.run_id }}"
+        run: node scripts/update-job-status.mjs error
