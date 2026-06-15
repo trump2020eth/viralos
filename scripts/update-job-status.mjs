@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
+import ws from 'ws'
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    global: { fetch },
+    realtime: { transport: ws },
+  }
 )
 
-const status = process.argv[2] // 'rendering' | 'error'
+const status = process.argv[2]
 const jobId = process.env.JOB_ID
-const projectId = process.env.PROJECT_ID
 
 if (!jobId) {
   console.error('JOB_ID is required')
