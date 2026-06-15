@@ -54,12 +54,15 @@ const [w, h] = format === '16:9' ? [1920, 1080]
              : format === '1:1'  ? [1080, 1080]
              :                     [1080, 1920]  // 9:16 default
 
+// Composition ID must match what Root.tsx registers: ViralOS-9-16, ViralOS-16-9, ViralOS-1-1
+const compositionId = `ViralOS-${format.replace(':', '-')}`
+
 const outputPath = join(outDir, `${jobId}.mp4`)
 
 const cmd = [
   'npx remotion render',
-  'remotion/index.ts',
-  'VideoComposition',
+  'remotion/Root.tsx',
+  compositionId,
   outputPath,
   `--width=${w}`,
   `--height=${h}`,
@@ -105,7 +108,8 @@ const { error: updateError } = await supabase
   .from('render_jobs')
   .update({
     status: 'done',
-    video_url: videoUrl,
+    r2_url: videoUrl,        // matches column name status route reads (job.r2_url)
+    r2_key: key,             // matches column name status route reads (job.r2_key)
     completed_at: new Date().toISOString(),
   })
   .eq('job_id', jobId)
