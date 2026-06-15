@@ -6,7 +6,7 @@ export default function NotFound() {
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: '64px', fontWeight: '700', color: '#8b5cf6', marginBottom: '12px' }}>404</div>
         <div style={{ fontSize: '18px', marginBottom: '24px' }}>Page not found</div>
-        <a href="/" style={{ color: '#8b5cf6', textDecoration: 'underline' }}>Go home</a>
+        <a href="/">Go home</a>
       </div>
     </div>
   )
