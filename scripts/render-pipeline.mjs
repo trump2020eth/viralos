@@ -3,10 +3,15 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import ws from 'ws'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    global: { fetch },
+    realtime: { transport: ws },
+  }
 )
 
 const jobId = process.env.JOB_ID
@@ -26,7 +31,7 @@ console.log(`\n🎬 Starting render for job ${jobId}\n`)
 console.log('📦 Fetching script payload...')
 const { data: payload, error: fetchError } = await supabase
   .from('render_payloads')
-  .select('payload')
+  .select('script')
   .eq('job_id', jobId)
   .single()
 
@@ -35,7 +40,7 @@ if (fetchError || !payload) {
   process.exit(1)
 }
 
-const script = payload.payload
+const script = payload.script
 console.log(`✓ Got script: ${script.scenes?.length ?? 0} scenes`)
 
 // ── 2. Write script to disk for Remotion ──────────────────────────────────
@@ -103,7 +108,7 @@ const { error: updateError } = await supabase
     video_url: videoUrl,
     completed_at: new Date().toISOString(),
   })
-  .eq('id', jobId)
+  .eq('job_id', jobId)
 
 if (updateError) {
   console.error('Failed to update job:', updateError.message)
