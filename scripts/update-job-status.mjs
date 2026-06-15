@@ -32,7 +32,7 @@ if (status === 'rendering') {
 const { error } = await supabase
   .from('render_jobs')
   .update(update)
-  .eq('id', jobId)
+  .eq('job_id', jobId)
 
 if (error) {
   console.error('Supabase update failed:', error.message)
