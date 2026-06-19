@@ -48,12 +48,35 @@ const videoFormat  = row.format        || format
 
 console.log(`✓ Got script: ${script.scenes?.length ?? 0} scenes, voice=${voice}, engine=${imageEngine}`)
 
-// ── 2. Generate images ────────────────────────────────────────────────────────
+// ── 2. Generate images as base64 data URLs ────────────────────────────────────
+// Remotion's <Img> accepts data URLs natively — no file:// or HTTP server needed.
 console.log('\n🖼  Generating images...')
 
 const [w, h] = videoFormat === '16:9' ? [1920, 1080] : videoFormat === '1:1' ? [1080, 1080] : [1080, 1920]
 
-async function generateImage(prompt, seed, index) {
+function colorFallback(seed) {
+  const hue = (seed * 47) % 360
+  // Generate a minimal JPEG via canvas-like approach using a solid PNG in base64
+  // Use a simple 1x1 colored pixel upscaled — Remotion handles it fine
+  const r = Math.round(128 + 60 * Math.sin(hue * Math.PI / 180))
+  const g = Math.round(128 + 60 * Math.sin((hue + 120) * Math.PI / 180))
+  const b = Math.round(128 + 60 * Math.sin((hue + 240) * Math.PI / 180))
+  // 1x1 PNG with the given color (hardcoded minimal PNG structure)
+  const png1x1 = Buffer.from([
+    0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a, // PNG signature
+    0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52, // IHDR chunk length + type
+    0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01, // width=1, height=1
+    0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53, // bit depth=8, color type=2 (RGB)
+    0xde,0x00,0x00,0x00,0x0c,0x49,0x44,0x41, // IHDR CRC + IDAT chunk
+    0x54,0x08,0xd7,0x63,r,g,b,0x00,          // IDAT data
+    0x00,0x00,0x04,0x00,0x01,0xe2,0x21,0xbc, // IDAT CRC
+    0x33,0x00,0x00,0x00,0x00,0x49,0x45,0x4e, // IEND chunk
+    0x44,0xae,0x42,0x60,0x82                  // IEND CRC
+  ])
+  return `data:image/png;base64,${png1x1.toString('base64')}`
+}
+
+async function generateImage(prompt, seed) {
   const encoded = encodeURIComponent(`${prompt} cinematic, photorealistic, 8k, dramatic lighting`)
   const token = process.env.POLLINATIONS_API_TOKEN ? `&token=${process.env.POLLINATIONS_API_TOKEN}` : ''
   const urls = [
@@ -64,30 +87,26 @@ async function generateImage(prompt, seed, index) {
   for (const url of urls) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 2000))
-        const r = await fetch(url)
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 3000))
+        const r = await fetch(url, { signal: AbortSignal.timeout(20000) })
         if (!r.ok) continue
         const buf = await r.arrayBuffer()
-        if (buf.byteLength < 1000) continue // skip empty/error responses
-        // FIX: save to disk so Remotion loads it as a local file, not a remote URL
-        const imgPath = join(outDir, `scene-${index}.jpg`)
-        writeFileSync(imgPath, Buffer.from(buf))
-        console.log(`  ✓ Scene ${index} image saved (${Math.round(buf.byteLength / 1024)}KB)`)
-        return `file://${imgPath}`
-      } catch(e) { console.warn(`  Image fetch attempt ${attempt + 1} failed for scene ${index}:`, e.message) }
+        if (buf.byteLength < 5000) continue // skip tiny/error responses
+        const b64 = Buffer.from(buf).toString('base64')
+        const mime = r.headers.get('content-type') || 'image/jpeg'
+        console.log(`  ✓ Scene ${seed} image fetched (${Math.round(buf.byteLength / 1024)}KB)`)
+        return `data:${mime};base64,${b64}`
+      } catch(e) {
+        console.warn(`  Scene ${seed} attempt ${attempt + 1} failed:`, e.message)
+      }
     }
   }
 
-  // Fallback: solid color SVG saved to disk
-  console.warn(`  ⚠ Using fallback color for scene ${index}`)
-  const hue = (seed * 47) % 360
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="hsl(${hue},30%,15%)"/><text x="50%" y="50%" fill="white" font-size="48" text-anchor="middle" dominant-baseline="middle">Scene ${index}</text></svg>`
-  const svgPath = join(outDir, `scene-${index}.svg`)
-  writeFileSync(svgPath, svg)
-  return `file://${svgPath}`
+  console.warn(`  ⚠ Scene ${seed} using color fallback`)
+  return colorFallback(seed)
 }
 
-const imageUrls = await Promise.all(script.scenes.map((scene, i) => generateImage(scene.image_prompt, i + 1, i + 1)))
+const imageUrls = await Promise.all(script.scenes.map((scene, i) => generateImage(scene.image_prompt, i + 1)))
 console.log('✓ Images ready')
 
 // ── 3. Generate audio ─────────────────────────────────────────────────────────
@@ -114,7 +133,11 @@ async function generateAudio(text, sceneNum) {
         headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
         body: JSON.stringify({ text, model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
       })
-      if (r.ok) { const buf = await r.arrayBuffer(); return { audioBase64: Buffer.from(buf).toString('base64'), mimeType: 'audio/mpeg', durationSeconds: estimateDuration(text) } }
+      if (r.ok) {
+        const buf = await r.arrayBuffer()
+        console.log(`  ✓ Scene ${sceneNum} ElevenLabs audio (${Math.round(buf.byteLength/1024)}KB)`)
+        return { audioBase64: Buffer.from(buf).toString('base64'), mimeType: 'audio/mpeg', durationSeconds: estimateDuration(text) }
+      }
     } catch(e) { console.warn(`[tts] ElevenLabs failed scene ${sceneNum}:`, e.message) }
   }
   const piperUrl = process.env.PIPER_API_URL || process.env.KOKORO_API_URL
@@ -124,7 +147,10 @@ async function generateAudio(text, sceneNum) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'piper', input: text, voice: 'en_US-libritts_r-medium', speed: 1.0, response_format: 'wav' }),
       })
-      if (r.ok) { const buf = await r.arrayBuffer(); return { audioBase64: Buffer.from(buf).toString('base64'), mimeType: 'audio/wav', durationSeconds: Math.max((buf.byteLength-44)/(24000*2), estimateDuration(text)) } }
+      if (r.ok) {
+        const buf = await r.arrayBuffer()
+        return { audioBase64: Buffer.from(buf).toString('base64'), mimeType: 'audio/wav', durationSeconds: Math.max((buf.byteLength-44)/(24000*2), estimateDuration(text)) }
+      }
     } catch(e) { console.warn(`[tts] Piper failed scene ${sceneNum}:`, e.message) }
   }
   console.warn(`[tts] Using silent fallback for scene ${sceneNum}`)
@@ -140,7 +166,7 @@ const sceneAssets = script.scenes.map((scene, i) => ({
   narration:            scene.narration,
   cameraMove:           scene.camera_movement,
   emotion:              scene.emotion || 'neutral',
-  imageUrl:             imageUrls[i],
+  imageUrl:             imageUrls[i],   // data URL — works natively in Remotion <Img>
   audioBase64:          audioResults[i].audioBase64,
   audioDurationSeconds: audioResults[i].durationSeconds,
   captionStyle,
@@ -157,7 +183,8 @@ const outputPath    = join(outDir, `${jobId}.mp4`)
 
 const result = spawnSync(
   'node_modules/.bin/remotion',
-  ['render', 'remotion/Root.tsx', compositionId, outputPath, `--width=${w}`, `--height=${h}`, `--props=${propsPath}`, '--log=verbose',
+  ['render', 'remotion/Root.tsx', compositionId, outputPath,
+    `--width=${w}`, `--height=${h}`, `--props=${propsPath}`, '--log=verbose',
     ...(process.env.CHROME_EXECUTABLE_PATH ? [`--browser-executable=${process.env.CHROME_EXECUTABLE_PATH}`] : [])],
   { stdio: 'inherit', cwd: process.cwd() }
 )
@@ -173,12 +200,10 @@ const s3 = new S3Client({
   credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
 })
 
-// Use videos/ prefix to match storage.ts and the refresh-url security check
 const key        = `videos/${userId}/${jobId}.mp4`
 const fileBuffer = readFileSync(outputPath)
 await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, Body: fileBuffer, ContentType: 'video/mp4' }))
 
-// Generate 7-day presigned URL so the browser can actually play it
 const signedUrl = await getSignedUrl(
   s3,
   new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }),
