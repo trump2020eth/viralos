@@ -53,21 +53,41 @@ console.log('\n🖼  Generating images...')
 
 const [w, h] = videoFormat === '16:9' ? [1920, 1080] : videoFormat === '1:1' ? [1080, 1080] : [1080, 1920]
 
-async function generateImage(prompt, seed) {
+async function generateImage(prompt, seed, index) {
   const encoded = encodeURIComponent(`${prompt} cinematic, photorealistic, 8k, dramatic lighting`)
   const token = process.env.POLLINATIONS_API_TOKEN ? `&token=${process.env.POLLINATIONS_API_TOKEN}` : ''
-  for (const url of [
+  const urls = [
     `https://image.pollinations.ai/prompt/${encoded}?width=${w}&height=${h}&nologo=true&model=flux&seed=${seed}${token}`,
     `https://image.pollinations.ai/prompt/${encoded}?width=${w}&height=${h}&nologo=true&seed=${seed}${token}`,
-  ]) {
-    try { const r = await fetch(url, { method: 'HEAD' }); if (r.ok) return url } catch {}
+  ]
+
+  for (const url of urls) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 2000))
+        const r = await fetch(url)
+        if (!r.ok) continue
+        const buf = await r.arrayBuffer()
+        if (buf.byteLength < 1000) continue // skip empty/error responses
+        // FIX: save to disk so Remotion loads it as a local file, not a remote URL
+        const imgPath = join(outDir, `scene-${index}.jpg`)
+        writeFileSync(imgPath, Buffer.from(buf))
+        console.log(`  ✓ Scene ${index} image saved (${Math.round(buf.byteLength / 1024)}KB)`)
+        return `file://${imgPath}`
+      } catch(e) { console.warn(`  Image fetch attempt ${attempt + 1} failed for scene ${index}:`, e.message) }
+    }
   }
+
+  // Fallback: solid color SVG saved to disk
+  console.warn(`  ⚠ Using fallback color for scene ${index}`)
   const hue = (seed * 47) % 360
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="hsl(${hue},30%,15%)"/></svg>`
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="hsl(${hue},30%,15%)"/><text x="50%" y="50%" fill="white" font-size="48" text-anchor="middle" dominant-baseline="middle">Scene ${index}</text></svg>`
+  const svgPath = join(outDir, `scene-${index}.svg`)
+  writeFileSync(svgPath, svg)
+  return `file://${svgPath}`
 }
 
-const imageUrls = await Promise.all(script.scenes.map((scene, i) => generateImage(scene.image_prompt, i + 1)))
+const imageUrls = await Promise.all(script.scenes.map((scene, i) => generateImage(scene.image_prompt, i + 1, i + 1)))
 console.log('✓ Images ready')
 
 // ── 3. Generate audio ─────────────────────────────────────────────────────────
@@ -153,12 +173,12 @@ const s3 = new S3Client({
   credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
 })
 
-// FIX: use videos/ prefix to match storage.ts and the refresh-url endpoint
+// Use videos/ prefix to match storage.ts and the refresh-url security check
 const key        = `videos/${userId}/${jobId}.mp4`
 const fileBuffer = readFileSync(outputPath)
 await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, Body: fileBuffer, ContentType: 'video/mp4' }))
 
-// FIX: generate a 7-day presigned URL instead of a raw private R2 URL
+// Generate 7-day presigned URL so the browser can actually play it
 const signedUrl = await getSignedUrl(
   s3,
   new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }),
