@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { spawnSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -143,7 +144,7 @@ const result = spawnSync(
 if (result.status !== 0) { console.error('Remotion render failed'); process.exit(1) }
 console.log(`✓ Rendered → ${outputPath}`)
 
-// ── 6. Upload to R2 ───────────────────────────────────────────────────────────
+// ── 6. Upload to R2 with presigned URL ───────────────────────────────────────
 console.log('\n☁️  Uploading to R2...')
 
 const s3 = new S3Client({
@@ -152,17 +153,24 @@ const s3 = new S3Client({
   credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
 })
 
-const key        = `renders/${userId}/${jobId}.mp4`
+// FIX: use videos/ prefix to match storage.ts and the refresh-url endpoint
+const key        = `videos/${userId}/${jobId}.mp4`
 const fileBuffer = readFileSync(outputPath)
 await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, Body: fileBuffer, ContentType: 'video/mp4' }))
-const videoUrl = `https://${process.env.R2_BUCKET_NAME}.r2.cloudflarestorage.com/${key}`
-console.log(`✓ Uploaded → ${videoUrl}`)
+
+// FIX: generate a 7-day presigned URL instead of a raw private R2 URL
+const signedUrl = await getSignedUrl(
+  s3,
+  new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }),
+  { expiresIn: 60 * 60 * 24 * 7 }
+)
+console.log(`✓ Uploaded → ${key}`)
 
 // ── 7. Mark done ──────────────────────────────────────────────────────────────
 console.log('\n✅ Marking job complete...')
 const totalDuration = sceneAssets.reduce((s, a) => s + a.audioDurationSeconds, 0)
 await dbPatch('render_jobs', { job_id: jobId }, {
-  status: 'done', r2_url: videoUrl, r2_key: key,
+  status: 'done', r2_url: signedUrl, r2_key: key,
   duration_seconds: Math.round(totalDuration), scene_count: sceneAssets.length,
   completed_at: new Date().toISOString(),
 })
